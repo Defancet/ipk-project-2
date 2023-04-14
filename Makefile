@@ -1,11 +1,12 @@
 .PHONY = all clean
 CXX = g++
-TARGET=ipk-sniffer
+TARGET = ipk-sniffer
+LIBS = -lpcap
 
 all: $(TARGET)
 
-hinfosvc: hinfosvc.cpp
-	$(CXX) $(CXXFLAGS) $^ -o $@
+$(TARGET): $(TARGET).cpp
+	$(CXX) $(CXXFLAGS) $< $(LIBS) -o $@
 
 clean:
 	rm -rf *.o $(TARGET)
