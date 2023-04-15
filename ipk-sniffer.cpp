@@ -164,6 +164,72 @@ void printActiveInterfaces(char *errbuf) {
     exit(EXIT_SUC);
 }
 
+string createFilter(struct args *args){
+    string filter;
+    int first = 1;
+    if (args->tcp) {
+        filter += "tcp";
+        first = 0;
+    }
+    if (args->udp) {
+        if (!first) {
+            filter += " or ";
+        }
+        filter += "udp";
+        first = 0;
+    }
+    if (args->arp) {
+        if (!first) {
+            filter += " or ";
+        }
+        filter += "arp";
+        first = 0;
+    }
+    if (args->icmp4) {
+        if (!first) {
+            filter += " or ";
+        }
+        filter += "icmp";
+        first = 0;
+    }
+    if (args->icmp6) {
+        if (!first) {
+            filter += " or ";
+        }
+        filter += "icmp6";
+        first = 0;
+    }
+    if (args->ndp) {
+        if (!first) {
+            filter += " or ";
+        }
+        filter += "icmp6 and (icmp6[0] == 135 or icmp6[0] == 136)";
+        first = 0;
+    }
+    if (args->igmp) {
+        if (!first) {
+            filter += " or ";
+        }
+        filter += "igmp";
+        first = 0;
+    }
+    if (args->mld) {
+        if (!first) {
+            filter += " or ";
+        }
+        filter += "icmp6 and (icmp6[0] == 130 or icmp6[0] == 131)";
+        first = 0;
+    }
+    if (args->port != -1) {
+        if (!first) {
+            filter += " or ";
+        }
+        filter += "port " + to_string(args->port);
+    }
+
+    return filter;
+}
+
 int main(int argc, char** argv) {
     struct args args = {0};
     args.port = -1;
@@ -184,5 +250,51 @@ int main(int argc, char** argv) {
         printActiveInterfaces(errbuf);
     }
 
+    pcap_t *handle = pcap_create(args.interface, errbuf);
+    if (!handle) {
+        cerr << "ERROR:Could not create interface " << args.interface << ": " << errbuf << endl;
+        exit(EXIT_ERR);
+    }
+
+    pcap_set_snaplen(handle, BUFSIZ);
+    pcap_set_promisc(handle, 1);
+    pcap_set_timeout(handle, 1000);
+
+    if (pcap_activate(handle) < 0) {
+        cerr << "ERROR:Could not activate interface " << args.interface << ": " << pcap_geterr(handle) << endl;
+        exit(EXIT_ERR);
+    }
+
+    struct bpf_program fp;
+    bpf_u_int32 mask;
+    bpf_u_int32 net;
+
+    if (pcap_lookupnet(args.interface, &net, &mask, errbuf) == -1) {
+        cerr << "ERROR:Could not get netmask for interface " << args.interface << ": " << errbuf << endl;
+        exit(EXIT_ERR);
+    }
+
+    if (pcap_datalink(handle) != DLT_EN10MB && pcap_datalink(handle) != DLT_LINUX_SLL) {
+        cerr << "ERROR:Interface " << args.interface << " is not an Ethernet interface." << endl;
+        exit(EXIT_ERR);
+    }
+
+    string filters = createFilter(&args);
+
+    if (pcap_compile(handle, &fp, filters.c_str(), 0, net) == PCAP_ERROR) {
+        cerr << "ERROR:Could not compile filter: " << pcap_geterr(handle) << endl;
+        pcap_close(handle);
+        exit(EXIT_ERR);
+    }
+
+    if (pcap_setfilter(handle, &fp) == PCAP_ERROR) {
+        cerr << "ERROR:Could not set filter: " << pcap_geterr(handle) << endl;
+        pcap_close(handle);
+        exit(EXIT_ERR);
+    }
+
+    pcap_freecode(&fp);
+
+    pcap_close(handle);
     exit(EXIT_SUC);
 }
