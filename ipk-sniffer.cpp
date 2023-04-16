@@ -18,8 +18,13 @@ using namespace std;
 
 pcap_t *handle;
 
-#define EXIT_ERR 0
-#define EXIT_SUC 1
+#define EXIT_SUC 0
+#define EXIT_ARGS 1
+#define EXIT_DEVS 2
+#define EXIT_PCAP 3
+#define EXIT_FILT 4
+#define EXIT_PAC 5
+#define EXIT_SIG 6
 
 struct args {
     char *interface;
@@ -145,11 +150,11 @@ void printActiveInterfaces(char *errbuf) {
     pcap_if_t *allInterfaces;
     if (pcap_findalldevs(&allInterfaces, errbuf) == PCAP_ERROR) {
         cerr << "ERROR:Could not get list of interfaces: " << errbuf << endl;
-        exit(EXIT_ERR);
+        exit(EXIT_DEVS);
     }
     if (!allInterfaces) {
         cerr << "ERROR:No active interfaces found." << endl;
-        exit(EXIT_ERR);
+        exit(EXIT_DEVS);
     }
     cout << endl;
     for (pcap_if_t *interface = allInterfaces; interface; interface = interface->next) {
@@ -325,7 +330,7 @@ void printPacket(const struct pcap_pkthdr* header, const u_char* packetData) {
 void signalHandler(int signal) {
     pcap_close(handle);
     cout << endl;
-    exit(EXIT_SUC);
+    exit(EXIT_SIG);
 }
 
 int main(int argc, char** argv) {
@@ -335,13 +340,13 @@ int main(int argc, char** argv) {
 
     if (!parseArgs(&args, argc, argv)) {
         printUsage();
-        exit(EXIT_ERR);
+        exit(EXIT_ARGS);
     }
 
     char errbuf[PCAP_ERRBUF_SIZE];
     if (pcap_init(PCAP_CHAR_ENC_LOCAL, errbuf) == -1) {
         cerr << "ERROR:Could not initialize pcap: " << errbuf << endl;
-        exit(EXIT_ERR);
+        exit(EXIT_PCAP);
     }
 
     if(!args.interface) {
@@ -351,7 +356,7 @@ int main(int argc, char** argv) {
     handle = pcap_create(args.interface, errbuf);
     if (!handle) {
         cerr << "ERROR:Could not create interface " << args.interface << ": " << errbuf << endl;
-        exit(EXIT_ERR);
+        exit(EXIT_PCAP);
     }
 
     pcap_set_snaplen(handle, BUFSIZ);
@@ -360,7 +365,7 @@ int main(int argc, char** argv) {
 
     if (pcap_activate(handle) < 0) {
         cerr << "ERROR:Could not activate interface " << args.interface << ": " << pcap_geterr(handle) << endl;
-        exit(EXIT_ERR);
+        exit(EXIT_PCAP);
     }
 
     struct bpf_program fp;
@@ -369,12 +374,12 @@ int main(int argc, char** argv) {
 
     if (pcap_lookupnet(args.interface, &net, &mask, errbuf) == -1) {
         cerr << "ERROR:Could not get netmask for interface " << args.interface << ": " << errbuf << endl;
-        exit(EXIT_ERR);
+        exit(EXIT_PCAP);
     }
 
     if (pcap_datalink(handle) != DLT_EN10MB && pcap_datalink(handle) != DLT_LINUX_SLL) {
         cerr << "ERROR:Interface " << args.interface << " is not an Ethernet interface." << endl;
-        exit(EXIT_ERR);
+        exit(EXIT_PCAP);
     }
 
     string filters = createFilter(&args);
@@ -387,13 +392,13 @@ int main(int argc, char** argv) {
     if (pcap_compile(handle, &fp, filters.c_str(), 0, net) == PCAP_ERROR) {
         cerr << "ERROR:Could not compile filter: " << pcap_geterr(handle) << endl;
         pcap_close(handle);
-        exit(EXIT_ERR);
+        exit(EXIT_FILT);
     }
 
     if (pcap_setfilter(handle, &fp) == PCAP_ERROR) {
         cerr << "ERROR:Could not set filter: " << pcap_geterr(handle) << endl;
         pcap_close(handle);
-        exit(EXIT_ERR);
+        exit(EXIT_FILT);
     }
 
     pcap_freecode(&fp);
@@ -406,15 +411,15 @@ int main(int argc, char** argv) {
         if (res == 0) {
             cerr << "ERROR:Timeout while waiting for packet." << endl;
             pcap_close(handle);
-            exit(EXIT_ERR);
+            exit(EXIT_PAC);
         } else if (res == PCAP_ERROR) {
             cerr << "ERROR:Error while waiting for packet: " << pcap_geterr(handle) << endl;
             pcap_close(handle);
-            exit(EXIT_ERR);
+            exit(EXIT_PAC);
         } else if (res == PCAP_ERROR_BREAK) {
             cerr << "ERROR:Loop terminated by pcap_breakloop()." << endl;
             pcap_close(handle);
-            exit(EXIT_ERR);
+            exit(EXIT_PAC);
         }
         printPacket(pktHeader, pktData);
     }
