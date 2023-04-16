@@ -16,6 +16,8 @@
 
 using namespace std;
 
+pcap_t *handle;
+
 #define EXIT_ERR 0
 #define EXIT_SUC 1
 
@@ -320,6 +322,12 @@ void printPacket(const struct pcap_pkthdr* header, const u_char* packetData) {
     cout << endl << endl;
 }
 
+void signalHandler(int signal) {
+    pcap_close(handle);
+    cout << endl;
+    exit(EXIT_SUC);
+}
+
 int main(int argc, char** argv) {
     struct args args = {0};
     args.port = -1;
@@ -340,7 +348,7 @@ int main(int argc, char** argv) {
         printActiveInterfaces(errbuf);
     }
 
-    pcap_t *handle = pcap_create(args.interface, errbuf);
+    handle = pcap_create(args.interface, errbuf);
     if (!handle) {
         cerr << "ERROR:Could not create interface " << args.interface << ": " << errbuf << endl;
         exit(EXIT_ERR);
@@ -373,6 +381,8 @@ int main(int argc, char** argv) {
 
     //TODO: DONT FORGET TO REMOVE THAT
     cout << filters << endl;
+
+    signal(SIGINT, signalHandler);
 
     if (pcap_compile(handle, &fp, filters.c_str(), 0, net) == PCAP_ERROR) {
         cerr << "ERROR:Could not compile filter: " << pcap_geterr(handle) << endl;
