@@ -1,24 +1,18 @@
 #include <iostream>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 #include <iomanip>
 #include <string>
-
 #include <ctime>
 #include <cctype>
-#include <cstring>
+#include <csignal>
 
 #include <pcap.h>
 
-#include <net/ethernet.h>
-#include <netinet/ether.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
-#include <netinet/ip6.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
-#include <netinet/icmp6.h>
-#include <netinet/igmp.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
 
 using namespace std;
 
@@ -51,10 +45,10 @@ void printUsage() {
             "   -t|--tcp                Display TCP packets.\n"
             "   -u|--udp                Display UDP packets.\n"
             "   --icmp4                 Display only ICMPv4 packets.\n"
-            "   --icmp6                 Display only ICMPv6 echo request/response).\n"
+            "   --icmp6                 Display only ICMPv6 echo request/response.\n"
             "   --arp                   Display only ARP frames.\n"
             "   --ndp                   Display only ICMPv6 NDP packets.\n"
-            "   --igmp                  Display only IGMP packets).\n"
+            "   --igmp                  Display only IGMP packets.\n"
             "   --mld                   Display only MLD packets." << endl;
 }
 
@@ -225,6 +219,107 @@ string createFilter(struct args *args) {
     return filter;
 }
 
+string parseZoneOffset(const char* timestamp, int microseconds) {
+    char buffer[40];
+    sprintf(buffer, timestamp, microseconds);
+    string str(buffer);
+    str.insert(str.length() - 2, ":");
+    return str;
+}
+
+void printPacket(const struct pcap_pkthdr* header, const u_char* packetData) {
+    time_t timestamp = header->ts.tv_sec;
+    struct tm *localTime = localtime(&timestamp);
+    char timestampStr[30];
+    strftime(timestampStr, sizeof(timestampStr), "%Y-%m-%dT%H:%M:%S.%%06u%z", localTime);
+    cout << "timestamp: " << parseZoneOffset(timestampStr, header->ts.tv_usec) << endl;
+
+    cout << "src MAC: " << hex << setfill('0');
+    for (int i = 0; i < 6; i++) {
+        cout << setw(2) << (int)packetData[i];
+        if (i < 5) {
+            cout << ":";
+        }
+    }
+    cout << dec << endl;
+
+    cout << "dst MAC: " << hex << setfill('0');
+    for (int i = 6; i < 12; i++) {
+        cout << setw(2) << (int)packetData[i];
+        if (i < 11) {
+            cout << ":";
+        }
+    }
+    cout << dec << endl;
+
+    u_short etherType = (packetData[12] << 8) | packetData[13];
+    const u_char *payload = packetData + 14;
+    int payloadSize = header->len - 14;
+
+    cout << "frame length: " << header->len << " bytes" << endl;
+
+    if (etherType == 0x0800) {
+        const struct ip *ipHeader = (struct ip *) payload;
+        int ipHeaderSize = ipHeader->ip_hl * 4;
+
+        char srcIP[INET6_ADDRSTRLEN], dstIP[INET6_ADDRSTRLEN];
+        inet_ntop(AF_INET, &(ipHeader->ip_src), srcIP, INET_ADDRSTRLEN);
+        inet_ntop(AF_INET, &(ipHeader->ip_dst), dstIP, INET_ADDRSTRLEN);
+        cout << "src IP: " << srcIP << "\n";
+        cout << "dst IP: " << dstIP << "\n";
+
+        u_short srcPort = 0, dstPort = 0;
+        const u_char *transportPayload = payload + ipHeaderSize;
+        if (ipHeader->ip_p == IPPROTO_TCP) {
+            const struct tcphdr *tcpHeader = (struct tcphdr *) transportPayload;
+            srcPort = ntohs(tcpHeader->th_sport);
+            dstPort = ntohs(tcpHeader->th_dport);
+        } else if (ipHeader->ip_p == IPPROTO_UDP) {
+            const struct udphdr *udpHeader = (struct udphdr *) transportPayload;
+            srcPort = ntohs(udpHeader->uh_sport);
+            dstPort = ntohs(udpHeader->uh_dport);
+        }
+        if (srcPort || dstPort) {
+            cout << "src port: " << srcPort << "\n";
+            cout << "dst port: " << dstPort << "\n";
+        }
+    }
+
+    cout << endl;
+
+    for (int i = 0; i < header->len; i += 16) {
+        cout << "0x" << hex << setw(4) << setfill('0') << i << ": ";
+
+        for (int j = 0; j < 16; j++) {
+            if (i + j < header->len) {
+                cout << hex << setw(2) << setfill('0') << static_cast<int>(packetData[i + j]) << " ";
+            } else {
+                cout << "   ";
+            }
+        }
+
+        cout << " ";
+
+        for (int j = 0; j < 16; j++) {
+            if (i + j < header->len) {
+                if (isprint(packetData[i + j])) {
+                    cout << packetData[i + j];
+                } else {
+                    cout << ".";
+                }
+            } else {
+                cout << " ";
+            }
+            if ((j + 1) % 8 == 0) {
+                cout << " ";
+            }
+        }
+
+        cout << endl;
+    }
+    cout << endl << endl;
+}
+
 int main(int argc, char** argv) {
     struct args args = {0};
     args.port = -1;
@@ -276,6 +371,9 @@ int main(int argc, char** argv) {
 
     string filters = createFilter(&args);
 
+    //TODO: DONT FORGET TO REMOVE THAT
+    cout << filters << endl;
+
     if (pcap_compile(handle, &fp, filters.c_str(), 0, net) == PCAP_ERROR) {
         cerr << "ERROR:Could not compile filter: " << pcap_geterr(handle) << endl;
         pcap_close(handle);
@@ -289,6 +387,27 @@ int main(int argc, char** argv) {
     }
 
     pcap_freecode(&fp);
+
+    struct pcap_pkthdr *pktHeader = NULL;
+    const u_char *pktData = NULL;
+    int res = 0;
+    for (int i = 0; i < args.numPackets; ++i) {
+        res = pcap_next_ex(handle, &pktHeader, &pktData);
+        if (res == 0) {
+            cerr << "ERROR:Timeout while waiting for packet." << endl;
+            pcap_close(handle);
+            exit(EXIT_ERR);
+        } else if (res == PCAP_ERROR) {
+            cerr << "ERROR:Error while waiting for packet: " << pcap_geterr(handle) << endl;
+            pcap_close(handle);
+            exit(EXIT_ERR);
+        } else if (res == PCAP_ERROR_BREAK) {
+            cerr << "ERROR:Loop terminated by pcap_breakloop()." << endl;
+            pcap_close(handle);
+            exit(EXIT_ERR);
+        }
+        printPacket(pktHeader, pktData);
+    }
 
     pcap_close(handle);
     exit(EXIT_SUC);
