@@ -164,67 +164,62 @@ void printActiveInterfaces(char *errbuf) {
     exit(EXIT_SUC);
 }
 
-string createFilter(struct args *args){
+string createFilter(struct args *args) {
     string filter;
-    int first = 1;
-    if (args->tcp) {
-        filter += "tcp";
-        first = 0;
-    }
-    if (args->udp) {
-        if (!first) {
-            filter += " or ";
+    string port = to_string(args->port);
+    bool orSwitch = false;
+
+    auto appendFilter = [&](const string& s) {
+        if (orSwitch) {
+            filter.append(" or ");
         }
-        filter += "udp";
-        first = 0;
+        filter.append(s);
+        orSwitch = true;
+    };
+
+    if (args->port >= 0) {
+        if (args->udp) appendFilter("(udp and port " + port + ")");
+        if (args->tcp) appendFilter("(tcp and port " + port + ")");
+    } else {
+        if (args->udp) appendFilter("udp");
+        if (args->tcp) appendFilter("tcp");
     }
-    if (args->arp) {
-        if (!first) {
-            filter += " or ";
-        }
-        filter += "arp";
-        first = 0;
-    }
-    if (args->icmp4) {
-        if (!first) {
-            filter += " or ";
-        }
-        filter += "icmp";
-        first = 0;
-    }
+
+    if (args->arp) appendFilter("arp");
+    if (args->icmp4) appendFilter("icmp");
+    if (args->igmp) appendFilter("igmp");
+
     if (args->icmp6) {
-        if (!first) {
-            filter += " or ";
+        if (args->ndp && args->mld) {
+            appendFilter("icmp6");
+        } else if (args->ndp && !args->mld) {
+            appendFilter("((icmp6 and (icmp6[0] == 128 or icmp6[0] == 129)) or (icmp6 and (icmp6[0] >= 133 and icmp6[0] <= 137)))");
+        } else if (!args->ndp && args->mld) {
+            appendFilter("((icmp6 and (icmp6[0] == 128 or icmp6[0] == 129)) or (icmp6 and (icmp6[0] >= 130 and icmp6[0] <= 132)))");
+        } else {
+            appendFilter("(icmp6 and (icmp6[0] == 128 or icmp6[0] == 129))");
         }
-        filter += "icmp6";
-        first = 0;
     }
+
     if (args->ndp) {
-        if (!first) {
-            filter += " or ";
+        if (!args->icmp6 && !args->mld) {
+            appendFilter("(icmp6 and (icmp6[0] >= 133 and icmp6[0] <= 137))");
         }
-        filter += "icmp6 and (icmp6[0] == 135 or icmp6[0] == 136)";
-        first = 0;
     }
-    if (args->igmp) {
-        if (!first) {
-            filter += " or ";
-        }
-        filter += "igmp";
-        first = 0;
-    }
+
     if (args->mld) {
-        if (!first) {
-            filter += " or ";
+        if (!args->icmp6 && !args->ndp) {
+            appendFilter("(icmp6 and (icmp6[0] >= 130 and icmp6[0] <= 132))");
         }
-        filter += "icmp6 and (icmp6[0] == 130 or icmp6[0] == 131)";
-        first = 0;
     }
-    if (args->port != -1) {
-        if (!first) {
-            filter += " or ";
+
+    if (!orSwitch) {
+        if (args->port >= 0) {
+            filter.append("(udp and port " + port + ") or (tcp and port " + port + ")");
+        } else {
+            filter.append("tcp or udp");
         }
-        filter += "port " + to_string(args->port);
+        filter.append(" or arp or icmp or igmp or icmp6");
     }
 
     return filter;
