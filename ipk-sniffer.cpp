@@ -164,6 +164,67 @@ void printActiveInterfaces(char *errbuf) {
     exit(EXIT_SUC);
 }
 
+string createFilter(struct args *args) {
+    string filter;
+    string port = to_string(args->port);
+    bool orSwitch = false;
+
+    auto appendFilter = [&](const string& s) {
+        if (orSwitch) {
+            filter.append(" or ");
+        }
+        filter.append(s);
+        orSwitch = true;
+    };
+
+    if (args->port >= 0) {
+        if (args->udp) appendFilter("(udp and port " + port + ")");
+        if (args->tcp) appendFilter("(tcp and port " + port + ")");
+    } else {
+        if (args->udp) appendFilter("udp");
+        if (args->tcp) appendFilter("tcp");
+    }
+
+    if (args->arp) appendFilter("arp");
+    if (args->icmp4) appendFilter("icmp");
+    if (args->igmp) appendFilter("igmp");
+
+    if (args->icmp6) {
+        if (args->ndp && args->mld) {
+            appendFilter("icmp6");
+        } else if (args->ndp && !args->mld) {
+            appendFilter("((icmp6 and (icmp6[0] == 128 or icmp6[0] == 129)) or (icmp6 and (icmp6[0] >= 133 and icmp6[0] <= 137)))");
+        } else if (!args->ndp && args->mld) {
+            appendFilter("((icmp6 and (icmp6[0] == 128 or icmp6[0] == 129)) or (icmp6 and (icmp6[0] >= 130 and icmp6[0] <= 132)))");
+        } else {
+            appendFilter("(icmp6 and (icmp6[0] == 128 or icmp6[0] == 129))");
+        }
+    }
+
+    if (args->ndp) {
+        if (!args->icmp6 && !args->mld) {
+            appendFilter("(icmp6 and (icmp6[0] >= 133 and icmp6[0] <= 137))");
+        }
+    }
+
+    if (args->mld) {
+        if (!args->icmp6 && !args->ndp) {
+            appendFilter("(icmp6 and (icmp6[0] >= 130 and icmp6[0] <= 132))");
+        }
+    }
+
+    if (!orSwitch) {
+        if (args->port >= 0) {
+            filter.append("(udp and port " + port + ") or (tcp and port " + port + ")");
+        } else {
+            filter.append("tcp or udp");
+        }
+        filter.append(" or arp or icmp or igmp or icmp6");
+    }
+
+    return filter;
+}
+
 int main(int argc, char** argv) {
     struct args args = {0};
     args.port = -1;
@@ -184,5 +245,51 @@ int main(int argc, char** argv) {
         printActiveInterfaces(errbuf);
     }
 
+    pcap_t *handle = pcap_create(args.interface, errbuf);
+    if (!handle) {
+        cerr << "ERROR:Could not create interface " << args.interface << ": " << errbuf << endl;
+        exit(EXIT_ERR);
+    }
+
+    pcap_set_snaplen(handle, BUFSIZ);
+    pcap_set_promisc(handle, 1);
+    pcap_set_timeout(handle, 1000);
+
+    if (pcap_activate(handle) < 0) {
+        cerr << "ERROR:Could not activate interface " << args.interface << ": " << pcap_geterr(handle) << endl;
+        exit(EXIT_ERR);
+    }
+
+    struct bpf_program fp;
+    bpf_u_int32 mask;
+    bpf_u_int32 net;
+
+    if (pcap_lookupnet(args.interface, &net, &mask, errbuf) == -1) {
+        cerr << "ERROR:Could not get netmask for interface " << args.interface << ": " << errbuf << endl;
+        exit(EXIT_ERR);
+    }
+
+    if (pcap_datalink(handle) != DLT_EN10MB && pcap_datalink(handle) != DLT_LINUX_SLL) {
+        cerr << "ERROR:Interface " << args.interface << " is not an Ethernet interface." << endl;
+        exit(EXIT_ERR);
+    }
+
+    string filters = createFilter(&args);
+
+    if (pcap_compile(handle, &fp, filters.c_str(), 0, net) == PCAP_ERROR) {
+        cerr << "ERROR:Could not compile filter: " << pcap_geterr(handle) << endl;
+        pcap_close(handle);
+        exit(EXIT_ERR);
+    }
+
+    if (pcap_setfilter(handle, &fp) == PCAP_ERROR) {
+        cerr << "ERROR:Could not set filter: " << pcap_geterr(handle) << endl;
+        pcap_close(handle);
+        exit(EXIT_ERR);
+    }
+
+    pcap_freecode(&fp);
+
+    pcap_close(handle);
     exit(EXIT_SUC);
 }
