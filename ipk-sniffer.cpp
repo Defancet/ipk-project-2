@@ -1,3 +1,13 @@
+/**
+ * IPK Project 1 - ZETA: Network sniffer
+ * @author
+ *   xkalut00, Maksim Kalutski
+ *
+ * @file ipk-sniffer.cpp
+ * @brief A network analyzer that captures and filters packets on a specific network interface.
+ * @date 17.04.2023
+ */
+
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
@@ -40,6 +50,9 @@ struct args {
     int mld;
 };
 
+/**
+ * Prints usage of the program.
+ */
 void printUsage() {
     cout << "Usage:\n"
             "   ./ipk-sniffer [-i interface | --interface interface] {-p port [--tcp|-t] [--udp|-u]} [--arp] [--icmp4] [--icmp6] [--igmp] [--mld] {-n num}\n"
@@ -59,6 +72,13 @@ void printUsage() {
             "   --mld                   Display only MLD packets." << endl;
 }
 
+
+/**
+ * Parses arguments from command line
+ * @param args struct to store parsed arguments
+ * @param argc number of arguments
+ * @param argc array of arguments
+ */
 bool parseArgs(struct args *args, int argc, char *argv[]) {
     if (argc == 1) {
         return true;
@@ -146,6 +166,10 @@ bool parseArgs(struct args *args, int argc, char *argv[]) {
     return true;
 }
 
+/**
+ * Prints list of active interfaces.
+ * @param errbuf buffer for error messages
+ */
 void printActiveInterfaces(char *errbuf) {
     pcap_if_t *allInterfaces;
     if (pcap_findalldevs(&allInterfaces, errbuf) == PCAP_ERROR) {
@@ -165,6 +189,11 @@ void printActiveInterfaces(char *errbuf) {
     exit(EXIT_SUC);
 }
 
+/**
+ * Creates filter string from parsed arguments.
+ * @param args struct with parsed arguments
+ * @return filter string
+ */
 string createFilter(struct args *args) {
     string filter;
     string port = to_string(args->port);
@@ -226,6 +255,11 @@ string createFilter(struct args *args) {
     return filter;
 }
 
+/**
+ * Helper function for the printPacket() function. It is used to parse the time zone offset.
+ * @param timestamp timestamp string
+ * @param microseconds microseconds
+ */
 string parseZoneOffset(const char* timestamp, int microseconds) {
     char buffer[40];
     sprintf(buffer, timestamp, microseconds);
@@ -234,6 +268,11 @@ string parseZoneOffset(const char* timestamp, int microseconds) {
     return str;
 }
 
+/**
+ * Prints and filter the contents of each packet captured by the sniffer.
+ * @param header packet header
+ * @param packetData packet data
+ */
 void printPacket(const struct pcap_pkthdr* header, const u_char* packetData) {
     time_t timestamp = header->ts.tv_sec;
     struct tm *localTime = localtime(&timestamp);
@@ -325,6 +364,9 @@ void printPacket(const struct pcap_pkthdr* header, const u_char* packetData) {
     cout << endl;
 }
 
+/**
+ * Function to catch Ctrl-c signal
+ */
 void signalHandler(int signal) {
     pcap_close(handle);
     cout << endl;
