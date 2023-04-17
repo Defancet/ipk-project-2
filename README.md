@@ -43,7 +43,7 @@ sequence number, acknowledgement number and checksum.
 
 
 ### User Datagram Protocol (UDP)
-UDP segment consists of an 8-byte header and variable length data1. The first four bytes of the UDP header store the
+UDP segment consists of an 8-byte header and variable length data. The first four bytes of the UDP header store the
 port numbers for the source and destination. The next two bytes store the length (in bytes) of the segment (including 
 the header). The final two bytes of the UDP header is the checksum, a field that’s used by the sender and receiver t
 o check for data corruption.
@@ -256,7 +256,7 @@ The program uses the following libraries:
 - `iostream`: for input and output operations.
 - `cstdlib`: for functions such as strtol and strtoul.
 - `cstring`: for functions such as strcmp.
-- `iomanip`: for manipulating input and output formats. -
+- `iomanip`: for manipulating input and output formats.
 - `string`: for string handling functions.
 - `ctime`: for date and time functions.
 - `cctype`: for character classification functions.
@@ -1328,7 +1328,7 @@ frame length: 70 bytes
 
 ```
 
-## Section 6: Trying to sniff from different interfaces:
+## Section 6: Trying to sniff from different interfaces
 
 ### Test 15: Sniffing packet from the `eth0` interface:
 
@@ -1481,6 +1481,52 @@ frame length: 72 bytes
 0x0020: ac 12 d0 01 da f5 00 35 00 24 01 2f db a0 01 00 .......5 .$./....
 0x0030: 00 01 00 00 00 00 00 00 06 67 6f 6f 67 6c 65 03 ........ .google.
 0x0040: 63 6f 6d 00 00 01 00 01                         com.....
+```
+
+## Section 7: Empty tests
+
+### Test 17: Sniffing all packets expect for **IGMP** from the `eth0` interface
+When I'm sending **IGMP** packet, the program doesn't print anything. Because the filter is set to catch all 
+packets except for **IGMP**.
+
+#### Input:
+```console
+$ sudo python3.10 tests/skripts/igmp.py
+.
+Sent 1 packets.
+```
+
+#### Expected output:
+```console
+
+```
+
+#### Actual output:
+```console
+$ sudo ./ipk-sniffer -i eth0 --tcp --udp --icmp4 --icmp6 --arp --ndp --mld
+
+```
+
+### Test 18: Sniffing all packets expect for **NDP** from the `eth0` interface
+When I'm sending **ARP** packet, the program doesn't print anything. Because the filter is set to catch all
+packets except for **NDP**.
+
+#### Input:
+```console
+$ sudo python3.10 tests/skripts/ndp.py
+.
+Sent 1 packets.
+```
+
+#### Expected output:
+```console
+
+```
+
+#### Actual output:
+```console
+$ sudo ./ipk-sniffer -i eth0 --tcp --udp --icmp4 --icmp6 --igmp --arp --mld
+
 ```
 
 ## Bibliography
