@@ -238,8 +238,8 @@ void printPacket(const struct pcap_pkthdr* header, const u_char* packetData) {
     time_t timestamp = header->ts.tv_sec;
     struct tm *localTime = localtime(&timestamp);
     char timestampStr[30];
-    strftime(timestampStr, sizeof(timestampStr), "%Y-%m-%dT%H:%M:%S.%%06u%z", localTime);
-    cout << "timestamp: " << parseZoneOffset(timestampStr, header->ts.tv_usec) << endl;
+    strftime(timestampStr, sizeof(timestampStr), "%Y-%m-%dT%H:%M:%S.%%03u%z", localTime);
+    cout << "timestamp: " << parseZoneOffset(timestampStr, header->ts.tv_usec / 1000) << endl;
 
     cout << "src MAC: " << hex << setfill('0');
     for (int i = 0; i < 6; i++) {
@@ -324,7 +324,7 @@ void printPacket(const struct pcap_pkthdr* header, const u_char* packetData) {
 
         cout << endl;
     }
-    cout << endl << endl;
+    cout << endl;
 }
 
 void signalHandler(int signal) {
@@ -383,9 +383,6 @@ int main(int argc, char** argv) {
     }
 
     string filters = createFilter(&args);
-
-    //TODO: DONT FORGET TO REMOVE THAT
-    cout << filters << endl;
 
     signal(SIGINT, signalHandler);
 
