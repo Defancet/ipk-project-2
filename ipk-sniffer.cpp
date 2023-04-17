@@ -305,8 +305,6 @@ void printPacket(const struct pcap_pkthdr* header, const u_char* packetData) {
             }
         }
 
-        cout << " ";
-
         for (int j = 0; j < 16; j++) {
             if (i + j < header->len) {
                 if (isprint(packetData[i + j])) {
