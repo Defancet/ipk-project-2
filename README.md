@@ -1483,10 +1483,6 @@ frame length: 72 bytes
 0x0040: 63 6f 6d 00 00 01 00 01                         com.....
 ```
 
-## Section 7: Filtering packets by 2 or more protocol types
-
-### Test 17: Sniffing 
-
 ## Bibliography
 
 - [1]  Gravé, V. (n.d.). Develop a Packet Sniffer with Libpcap [Web log post]. Retrieved from https://vichargrave.github.io/programming/develop-a-packet-sniffer-with-libpcap/
