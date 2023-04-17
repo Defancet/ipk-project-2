@@ -430,8 +430,6 @@ int main(int argc, char** argv) {
 
     string filters = createFilter(&args);
 
-    cout << filters << endl;
-
     signal(SIGINT, signalHandler);
 
     if (pcap_compile(handle, &fp, filters.c_str(), 0, net) == PCAP_ERROR) {
